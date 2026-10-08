@@ -92,6 +92,53 @@ def index() -> str:
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
+@app.get("/setup", response_class=HTMLResponse)
+def setup_page() -> str:
+    return (STATIC / "setup.html").read_text(encoding="utf-8")
+
+
+# ── 과목 세팅 — 대화로 정하고 사람이 확정한다(errata/subjects.py) ──────────────────────
+@app.get("/api/subjects")
+def api_subjects(job: str = "") -> Dict[str, Any]:
+    from errata import subjects as S
+    j = _job(job)
+    return {"job": j.name, "label": j.pack().get("label", ""), "items": S.subjects(j), "fields": S.FIELDS}
+
+
+@app.get("/api/subject")
+def api_subject(job: str = "", n: str = "") -> Dict[str, Any]:
+    from errata import subjects as S
+    j = _job(job)
+    c = read_json(S.chat_path(j, n), {}) or {}
+    conf = S.load(j).get(n) or {}
+    return {"n": n, "messages": c.get("messages") or [], "draft": c.get("draft"), "draft_text": S.render(c.get("draft") or {}),
+            "confirmed": conf, "confirmed_text": S.render(conf), "status": next((s["status"] for s in S.subjects(j) if s["n"] == n), "")}
+
+
+@app.post("/api/subject/chat")
+def api_subject_chat(body: Dict[str, Any]) -> Dict[str, Any]:
+    """한 차례 — 모델 호출(구독 claude -p)이라 수십 초 걸린다."""
+    from errata import subjects as S
+    j = _job(body.get("job", ""))
+    try:
+        r = S.turn(j, str(body.get("n")), str(body.get("message") or ""))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"세팅 조교 호출 실패: {e}")
+    r["draft_text"] = S.render(r.get("draft") or {})
+    return r
+
+
+@app.post("/api/subject/confirm")
+def api_subject_confirm(body: Dict[str, Any]) -> Dict[str, Any]:
+    from errata import subjects as S
+    j = _job(body.get("job", ""))
+    try:
+        s = S.confirm(j, str(body.get("n")))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"confirmed": s, "confirmed_text": S.render(s)}
+
+
 @app.get("/api/jobs")
 def jobs() -> List[str]:
     return sorted(d.name for d in JOBS.iterdir() if (d / "job.json").exists())

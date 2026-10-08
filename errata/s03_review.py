@@ -65,7 +65,9 @@ def build_prompt(job: Job, batch: str, us: List[dict]) -> str:
     pack = job.pack()
     import yaml
     pcfg = yaml.safe_load((job.pack_dir / "persona.yaml").read_text(encoding="utf-8")) or {}
+    from errata import subjects
     common = dict(exam_label=pack.get("label", ""), scope=(pack.get("scope") or "").strip(),
+                  subject_notes=subjects.prompt_block(job, us),
                   authors=_cards(job, "author"), students=_cards(job, "reviewer"),
                   require="\n".join("- " + r for r in pcfg.get("require") or []), n=len(us), batch=batch)
     here = Path(__file__).resolve().parent / "prompts"

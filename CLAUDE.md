@@ -31,6 +31,13 @@ data/            ★ 깃에 올리지 않는다
 `data/pack/<팩>/pack.yaml·persona.yaml·roles.yaml` → `data/jobs/<잡>/job.json`(`"pack": "<팩>"`) → `job.local.json`(산물 폴더, 웹앱 ①에서도 된다).
 그다음 `run.bat ingest` → `run.bat panel`(처음이면 페르소나 코드·데이터를 받는다, 수 분) → 패널명부를 보여 주고 확인 → `run.bat trial`.
 
+### 과목 세팅 — 과목마다 검수 기준을 대화로 정하고 확정한다
+웹앱 오른쪽 위 **「과목 세팅 →」**(http://127.0.0.1:5191/setup). 과목을 고르면 세팅 조교(`claude -p`)가 그 과목 목차를 보고 묻는다 →
+답을 주고받으면 「세팅안」 카드가 뜬다 → 카드를 열어 보고 **[확정]** → `data/pack/<팩>/subjects.yaml`.
+확정한 세팅만 그 과목 단위가 든 검토 배치의 프롬프트에 「과목 세팅」으로 들어간다(이미 끝난 배치는 다시 돌리지 않는다 — 필요하면 `--force --only`).
+세팅 칸: 검수 범위 · 검수 중점 · 범위 밖 · 표기 통일 · 금지어 · 검수진 자리별 중점 · 메모. 코드는 `errata/subjects.py`, 프롬프트 `errata/prompts/09_과목세팅.md`.
+이 대화에서 세팅을 요청받아도 같은 함수(`subjects.turn`·`subjects.confirm`)를 쓰되, **확정은 사용자가 「확정」이라고 말한 뒤에만** 한다.
+
 ## 「정오표 만들어 줘 / 검수 돌려 줘」 를 받으면
 1. `run.bat status` 로 어디까지 왔는지 본다. 잡이 없으면 위 「처음 시작」.
 2. 처음이면 `run.bat trial` 로 1회차만 끝까지 → 엑셀·HTML 을 열어 형식을 확인 → `run.bat all`.

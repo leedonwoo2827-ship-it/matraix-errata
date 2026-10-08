@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>과목 세팅</title>
+<style>
+:root{--bg:#f6f7f9;--side:#eef1f5;--card:#fff;--fg:#1b1f24;--mut:#5b6573;--line:#dde2e8;--acc:#1f5fbf;--acc2:#e8f0fc;--me:#1f3a5f;--mefg:#fff;--ok:#067647;--okbg:#e3f6ec;--mid:#9a6700;--midbg:#fff4d6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--side:#11161d;--card:#161b22;--fg:#e6e9ee;--mut:#9aa4b2;--line:#2b313a;--acc:#7fb0ff;--acc2:#1c2a40;--me:#25395a;--mefg:#e6e9ee;--ok:#6fdc9a;--okbg:#14321f;--mid:#e3b341;--midbg:#3a2f12}}
+:root[data-theme="dark"]{--bg:#0e1116;--side:#11161d;--card:#161b22;--fg:#e6e9ee;--mut:#9aa4b2;--line:#2b313a;--acc:#7fb0ff;--acc2:#1c2a40;--me:#25395a;--mefg:#e6e9ee;--ok:#6fdc9a;--okbg:#14321f;--mid:#e3b341;--midbg:#3a2f12}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.6 "Pretendard","Noto Sans KR",system-ui,sans-serif;display:grid;grid-template-columns:270px 1fr;height:100vh}
+aside{background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+aside .top{padding:14px 14px 8px}
+aside h1{font-size:15px;margin:0 0 2px}
+aside .sub{font-size:12px;color:var(--mut)}
+aside select{width:100%;margin-top:10px;font:inherit;padding:6px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.list{overflow:auto;padding:6px 8px;flex:1}
+.item{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:8px;cursor:pointer}
+.item:hover{background:var(--card)}.item.on{background:var(--acc2)}
+.av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#fff;flex:none}
+.item b{display:block;font-size:14px}
+.chip{display:inline-block;font-size:11px;padding:0 7px;border-radius:999px;background:var(--line);color:var(--mut);margin-top:2px}
+.chip.ok{background:var(--okbg);color:var(--ok)}.chip.mid{background:var(--midbg);color:var(--mid)}
+aside .foot{padding:10px 14px;border-top:1px solid var(--line);font-size:12px;color:var(--mut)}
+aside a{color:var(--acc)}
+main{display:flex;flex-direction:column;min-height:0;min-width:0}
+.head{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--card)}
+.head h2{font-size:16px;margin:0}.head .grow{flex:1}
+button{font:inherit;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--acc)}button.pri{background:var(--acc);border-color:var(--acc);color:#fff}button:disabled{opacity:.45;cursor:default}
+.msgs{flex:1;overflow:auto;padding:20px 18px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:760px;white-space:pre-wrap;word-break:break-word}
+.msg.me{align-self:flex-end;background:var(--me);color:var(--mefg);padding:10px 14px;border-radius:12px 12px 2px 12px}
+.msg.bot{align-self:flex-start;background:var(--card);border:1px solid var(--line);padding:10px 14px;border-radius:12px 12px 12px 2px}
+.msg .who{font-size:12px;color:var(--mut);margin-bottom:4px;white-space:normal}
+.card{align-self:flex-start;display:flex;gap:10px;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;cursor:pointer;max-width:420px}
+.card:hover{border-color:var(--acc)}
+.card .ic{font-size:11px;font-weight:700;background:var(--acc);color:#fff;border-radius:4px;padding:2px 6px}
+.work{align-self:flex-start;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:10px 14px;font-size:13px;color:var(--mut)}
+.empty{margin:auto;text-align:center;color:var(--mut);max-width:440px}
+.inp{padding:12px 18px 16px;background:var(--bg)}
+.inp .box{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px}
+.inp textarea{flex:1;border:0;outline:0;resize:none;background:transparent;color:var(--fg);font:inherit;min-height:44px;max-height:180px}
+.inp .hint{font-size:12px;color:var(--mut);margin-top:6px;text-align:center}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);width:min(720px,94vw);padding:0}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog .dh{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--line)}
+dialog .dh b{flex:1}
+dialog .db{padding:14px 18px;max-height:62vh;overflow:auto}
+dialog dl{margin:0}dialog dt{font-weight:700;margin-top:10px}dialog dd{margin:2px 0 0 0;white-space:pre-wrap}
+dialog .note{font-size:12px;color:var(--mut);padding:0 18px 14px}
+@media (max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{max-height:38vh}}
+</style>
+</head>
+<body>
+<aside>
+  <div class="top">
+    <h1>과목 세팅</h1>
+    <div class="sub" id="label">—</div>
+    <select id="job"></select>
+  </div>
+  <div class="list" id="list"></div>
+  <div class="foot">대화로 세팅안을 만들고 <b>[확정]</b>을 눌러야 검토에 쓰입니다.<br><a href="/">← 검수엔진으로</a></div>
+</aside>
+<main>
+  <div class="head">
+    <h2 id="title">과목을 고르세요</h2><span class="chip" id="status"></span>
+    <span class="grow"></span>
+    <button id="viewConf" disabled>확정된 세팅</button>
+  </div>
+  <div class="msgs" id="msgs"><div class="empty">왼쪽에서 과목을 고르면 세팅 조교가 그 과목 목차를 보고 질문을 시작합니다.<br>답을 주고받아 세팅안을 만들고, 카드를 눌러 확인한 뒤 확정하세요.</div></div>
+  <div class="inp">
+    <div class="box"><textarea id="text" placeholder="답을 적으세요 (Enter 보내기 · Shift+Enter 줄바꿈)" disabled></textarea>
+      <button class="pri" id="send" disabled>보내기</button></div>
+    <div class="hint">Claude 구독(claude -p)으로 실행 · 한 차례 수십 초 · 기록은 data/pack/&lt;팩&gt;/_세팅대화/ 에 남습니다</div>
+  </div>
+</main>
+<dialog id="dlg">
+  <div class="dh"><b id="dTitle">세팅안</b><button class="pri" id="dConfirm">확정</button><button id="dClose">닫기</button></div>
+  <div class="db" id="dBody"></div>
+  <div class="note" id="dNote"></div>
+</dialog>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const COLORS = ["#3b82f6","#10b981","#f59e0b","#ec4899","#8b5cf6","#14b8a6","#ef4444"];
+let JOB = "", CUR = null, FIELDS = {}, BUSY = false, DATA = null;
+async function api(u, o) {
+  const r = await fetch(u, o);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m } catch (e) {} throw new Error(m) }
+  return r.json();
+}
+function chip(st) {
+  const cls = st.startsWith("확정") ? "ok" : (st === "세팅안 있음" ? "mid" : "");
+  return `<span class="chip ${cls}">${esc(st)}</span>`;
+}
+async function loadJobs() {
+  const js = await api("/api/jobs");
+  $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join("");
+  JOB = new URLSearchParams(location.search).get("job") || js[0] || "";
+  $("#job").value = JOB;
+  await loadList();
+  const n = new URLSearchParams(location.search).get("n");          // /setup?n=1 — 그 과목을 바로 연다
+  const el = n && document.querySelector(`.item[data-n="${CSS.escape(n)}"]`);
+  if (el) open(n, el.querySelector("b").textContent);
+}
+async function loadList() {
+  const d = await api(`/api/subjects?job=${encodeURIComponent(JOB)}`);
+  FIELDS = d.fields; $("#label").textContent = d.label;
+  $("#list").innerHTML = d.items.map((s, i) => `<div class="item ${CUR === s.n ? "on" : ""}" data-n="${esc(s.n)}">
+    <div class="av" style="background:${COLORS[i % COLORS.length]}">${esc(s.n)}</div>
+    <div><b>${esc(s.n)}과목 ${esc(s.name)}</b>${chip(s.status)}${s.confirmed_at ? `<div class="sub">확정 ${esc(s.confirmed_at)}</div>` : ""}</div></div>`).join("")
+    || `<div class="sub" style="padding:10px">pack.yaml 에 subjects 가 없습니다</div>`;
+  document.querySelectorAll(".item").forEach(el => el.onclick = () => open(el.dataset.n, el.querySelector("b").textContent));
+}
+async function open(n, title) {
+  if (BUSY) return;
+  CUR = n; $("#title").textContent = title; await loadList();
+  DATA = await api(`/api/subject?job=${encodeURIComponent(JOB)}&n=${encodeURIComponent(n)}`);
+  $("#status").outerHTML = chip(DATA.status).replace('class="chip', 'id="status" class="chip');
+  $("#viewConf").disabled = !DATA.confirmed_text;
+  $("#text").disabled = $("#send").disabled = false;
+  render();
+  if (!DATA.messages.length) send("__start__");
+}
+function render(working) {
+  const m = DATA.messages.map(x => x.role === "user"
+    ? `<div class="msg me">${esc(x.text)}</div>`
+    : `<div class="msg bot"><div class="who">세팅 조교${x.sec ? ` · ${x.sec}초` : ""}</div>${esc(x.text)}</div>`).join("");
+  const card = DATA.draft ? `<div class="card" id="openDraft"><span class="ic">세팅안</span><div><b>${esc($("#title").textContent)} 세팅안</b><div class="sub">눌러서 보고 확정</div></div></div>` : "";
+  const w = working ? `<div class="work" id="work">세팅 조교 작업 중 · <span id="sec">0</span>초</div>` : "";
+  $("#msgs").innerHTML = m + card + w || `<div class="empty">대화를 시작합니다…</div>`;
+  if ($("#openDraft")) $("#openDraft").onclick = () => showDraft();
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+}
+async function send(text) {
+  if (BUSY || !CUR) return;
+  if (text !== "__start__") { if (!text.trim()) return; DATA.messages.push({role: "user", text}); }
+  BUSY = true; $("#send").disabled = true; $("#text").value = "";
+  render(true);
+  const t0 = Date.now(), tick = setInterval(() => { const s = $("#sec"); if (s) s.textContent = Math.round((Date.now() - t0) / 1000) }, 1000);
+  try {
+    await api("/api/subject/chat", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({job: JOB, n: CUR, message: text})});
+    DATA = await api(`/api/subject?job=${encodeURIComponent(JOB)}&n=${encodeURIComponent(CUR)}`);
+  } catch (e) {
+    DATA.messages.push({role: "assistant", text: "⚠ " + e.message});
+  } finally {
+    clearInterval(tick); BUSY = false; $("#send").disabled = false; render(); loadList();
+  }
+}
+function dl(obj) {
+  return `<dl>${Object.entries(FIELDS).filter(([k]) => obj && obj[k] && (typeof obj[k] !== "object" || Object.keys(obj[k]).length)).map(([k, lab]) => {
+    const v = obj[k];
+    const t = Array.isArray(v) ? v.map(x => "· " + x).join("\n") : (typeof v === "object" ? Object.entries(v).map(([a, b]) => `· ${a} — ${Array.isArray(b) ? b.join(", ") : b}`).join("\n") : v);
+    return `<dt>${esc(lab)}</dt><dd>${esc(t)}</dd>`;
+  }).join("") || "<dd>(빈 세팅)</dd>"}</dl>`;
+}
+function showDraft() {
+  $("#dTitle").textContent = $("#title").textContent + " 세팅안 (확정 전)";
+  $("#dBody").innerHTML = dl(DATA.draft);
+  $("#dConfirm").style.display = "";
+  $("#dNote").textContent = "확정하면 data/pack/<팩>/subjects.yaml 에 저장되고, 이 과목 단위가 든 검토 배치부터 검수단 프롬프트에 들어갑니다. 이미 끝난 배치는 다시 돌리지 않습니다.";
+  $("#dlg").showModal();
+}
+$("#viewConf").onclick = () => {
+  $("#dTitle").textContent = $("#title").textContent + " 확정된 세팅 · " + (DATA.confirmed.confirmed_at || "");
+  $("#dBody").innerHTML = dl(DATA.confirmed); $("#dConfirm").style.display = "none";
+  $("#dNote").textContent = "data/pack/<팩>/subjects.yaml"; $("#dlg").showModal();
+};
+$("#dConfirm").onclick = async () => {
+  try {
+    await api("/api/subject/confirm", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({job: JOB, n: CUR})});
+    $("#dlg").close(); await open(CUR, $("#title").textContent);
+  } catch (e) { alert(e.message) }
+};
+$("#dClose").onclick = () => $("#dlg").close();
+$("#send").onclick = () => send($("#text").value);
+$("#text").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#text").value) } };
+$("#job").onchange = () => { JOB = $("#job").value; CUR = null; loadList() };
+loadJobs().catch(e => $("#msgs").innerHTML = `<div class="empty">${esc(e.message)}</div>`);
+</script>
+</body>
+</html>
