@@ -20,7 +20,8 @@ data/            ★ 깃에 올리지 않는다
 
 ## 처음 시작 — 「시작」「새 시험」「검수 준비」를 받으면 이 대화를 한다
 0. **준비** — `.venv` 가 없으면 setup.bat 을 대신해 직접 깐다(setup.bat 은 pause 가 있어 대화에서 부르지 않는다):
-   `py -3.12 -m venv .venv` → `PYTHONUTF8=1` 로 `.venv\Scripts\python -m pip install -r requirements.txt` → `claude --version` 으로 CLI 로그인 확인.
+   `py -3.12 -m venv .venv` → `PYTHONUTF8=1` 로 `.venv\Scripts\python -m pip install -r requirements.txt` → CLI 확인 `.venv\Scripts\python -c "import sys; sys.path.insert(0,'engine/tools'); import provider; print(provider.find_cli())"`
+   (PATH 에 claude 가 없어도 VSCode 확장 안의 claude.exe 를 찾는다. None 이면 Claude Code 를 깔거나 CLAUDE_CLI=<경로>).
 
 `data/jobs/` 에 잡이 없거나 사용자가 새 시험을 말하면, **파일을 만들기 전에** 아래를 차례로 묻는다(한 번에 2~3개씩).
 **시작 프롬프트에 이미 적힌 것은 다시 묻지 않는다** — 빠진 것만 묻는다.
