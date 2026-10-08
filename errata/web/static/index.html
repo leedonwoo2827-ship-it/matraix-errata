@@ -31,6 +31,16 @@ button.danger{color:var(--hi)}button:disabled{opacity:.45;cursor:default}
 .kpi{border:1px solid var(--line);border-radius:8px;padding:10px}.kpi b{display:block;font-size:20px}
 pre#log{background:var(--log);color:var(--logfg);border-radius:8px;padding:12px;height:300px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;margin:0;white-space:pre-wrap}
 pre#log .wait{color:#e3b341}
+.big{font-size:18px;font-weight:700;margin:2px 0 10px}.big .muted{font-size:13px;font-weight:400}
+.pcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:8px 0 12px}
+.pc{border:1px solid var(--line);border-radius:10px;padding:10px 12px}.pc b{font-size:14px}
+.pc .n{font-size:22px;font-weight:700;margin:2px 0}.pc .n small{font-size:13px;color:var(--mut);font-weight:400}
+.pc .mini{height:6px;background:var(--line);border-radius:4px;overflow:hidden;margin:6px 0}.pc .mini>i{display:block;height:100%;background:var(--acc)}
+.pc.cur{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc2)}.pc.done{background:var(--acc2)}.pc.done .mini>i{background:var(--ok)}
+.pc .s{font-size:12px;color:var(--mut)}.pc .s .h{color:var(--hi);font-weight:700}.pc .s .m{color:var(--mid);font-weight:600}
+table.grid td,table.grid th{text-align:center;padding:4px 6px;font-size:12px}table.grid td.l{text-align:left;white-space:nowrap}
+table.grid td.full{background:#8EA9DB;color:#0b1b33;font-weight:600}table.grid td.part{background:#DDEBF7;color:#0b1b33}table.grid td.none{color:var(--mut)}
+details>summary{cursor:pointer;color:var(--mut);margin:8px 0}
 .tbl{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
 th{white-space:nowrap;color:var(--mut);font-weight:600}
@@ -80,9 +90,13 @@ select{font:inherit;padding:6px;border-radius:6px;border:1px solid var(--line);b
 
   <section>
     <h2>③ 진행</h2>
+    <div class="big" id="big">—</div>
     <div class="bar"><i id="barFill"></i></div>
     <div class="muted" id="progTxt">—</div>
-    <div class="kpis" id="kpis"></div>
+    <div class="pcards" id="pcards"></div>
+    <details open><summary>진행표 — 과목 × 강 × 산물 (칸 = 본 것/전체 · 진하게 다 봄 · 옅게 일부)</summary>
+      <div class="tbl"><table class="grid" id="grid"></table></div><div class="muted" id="gridNote"></div></details>
+    <details><summary>산물 단위 수</summary><div class="kpis" id="kpis"></div></details>
     <div class="row" style="margin:12px 0">
       <a href="#" id="dlx"><button>내부 정오표 엑셀</button></a>
       <a href="#" id="dlh" target="_blank"><button>게시용 정오표 HTML</button></a>
@@ -90,7 +104,7 @@ select{font:inherit;padding:6px;border-radius:6px;border:1px solid var(--line);b
       <a href="#" id="dlpanel" target="_blank"><button>검수단 명부</button></a>
       <button id="openDir">산출 폴더 열기</button>
     </div>
-    <pre id="log"></pre>
+    <details id="logBox"><summary>실행 로그 (펼치기)</summary><pre id="log"></pre></details>
   </section>
 
   <section>
@@ -119,7 +133,7 @@ async function loadJobs() {
   const js = await api("/api/jobs");
   $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join("");
   JOB = js[0] || "";
-  $("#job").onchange = () => { JOB = $("#job").value; loadSources(); poll(); };
+  $("#job").onchange = () => { JOB = $("#job").value; loadSources(); poll(); dash(); };
 }
 async function loadSources() {
   const d = await api(`/api/sources?job=${JOB}`);
@@ -177,6 +191,35 @@ async function poll() {
   } catch (e) { $("#state").textContent = "서버 응답 없음"; }
   $("#clock").textContent = new Date().toLocaleTimeString();
 }
+const hm = t => t ? new Date(t * 1000).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "";
+const dayhm = t => { if (!t) return ""; const d = new Date(t * 1000), n = new Date(); return (d.toDateString() === n.toDateString() ? "" : `${d.getMonth() + 1}/${d.getDate()} `) + hm(t) };
+async function dash() {
+  if (!JOB) return;
+  try {
+    const g = await api(`/api/dashboard?job=${JOB}`);
+    const done = g.products.reduce((a, p) => a + p.done, 0), total = g.products.reduce((a, p) => a + p.total, 0);
+    const cur = g.products.find(p => p.current);
+    const stageName = {review: "검토", verify: "재검증"}[g.stage] || g.stage || "";
+    $("#big").innerHTML = total ? `전체 ${done}/${total} · 남은 ${total - done}` +
+      (cur ? ` · 지금 <span style="color:var(--acc)">${esc(cur.name)} ${cur.done + 1}/${cur.total}</span>` : "") +
+      (g.eta_all ? ` · 검토 예상 완료 ${dayhm(g.eta_all)}` : (done === total ? " · 검토 끝" : "")) +
+      ` <span class="muted">(${g.run.running ? "실행 중" : "멈춤"}${stageName ? " · " + esc(stageName) + " 단계" : ""} · 배치당 평균 ${Math.round(g.avg)}초 · 한도 대기·재검증 시간 제외)</span>` : "검토 전";
+    $("#pcards").innerHTML = g.products.map((p, i) => {
+      const fin = p.done === p.total;
+      return `<div class="pc ${p.current ? "cur" : ""} ${fin ? "done" : ""}"><b>${i + 1}. ${esc(p.name)}</b>
+        <div class="n">${p.done}<small> / ${p.total}</small></div><div class="mini"><i style="width:${p.total ? 100 * p.done / p.total : 0}%"></i></div>
+        <div class="s">${fin ? `✓ 완료 ${dayhm(p.finished_at)}` : (p.current ? `▶ 진행 중 · 예상 ${dayhm(p.eta)}` : `대기 · 예상 ${dayhm(p.eta)}`)}</div>
+        <div class="s">지적 <span class="h">상 ${p.sev["상"]}</span> · <span class="m">중 ${p.sev["중"]}</span> · 하 ${p.sev["하"]}</div></div>`;
+    }).join("");
+    let prev = null;
+    $("#grid").innerHTML = `<tr><th>과목</th><th>강</th><th>장</th>${g.cols.map(c => `<th>${esc(c.name)}</th>`).join("")}<th>이 강 예상</th></tr>` +
+      g.rows.map(r => { const s = r.subj !== prev ? `${r.subj}과목 ${esc(r.subj_name)}` : ""; prev = r.subj;
+        return `<tr><td class="l">${s}</td><td>${r.lec_no}강</td><td class="l">${esc(r.chs)}</td>` +
+          r.cells.map(c => !c.t ? `<td class="none">—</td>` : `<td class="${c.n === c.t ? "full" : (c.n ? "part" : "")}">${c.n}/${c.t}</td>`).join("") +
+          `<td>${r.eta ? dayhm(r.eta) : "완료"}</td></tr>` }).join("");
+    $("#gridNote").textContent = Object.keys(g.unplaced).length ? `강에 붙이지 못한 단위: ${Object.entries(g.unplaced).map(([k, v]) => k + " " + v).join(", ")}` : "";
+  } catch (e) { /* 잡이 없거나 아직 ingest 전 */ }
+}
 $("#fLoad").onclick = async () => {
   const d = await api(`/api/findings?job=${JOB}&product=${$("#fProd").value}&severity=${encodeURIComponent($("#fSev").value)}&origin=${encodeURIComponent($("#fOrig").value)}`);
   $("#fTotal").textContent = `— ${d.total}건 중 ${d.rows.length}건`;
@@ -184,7 +227,7 @@ $("#fLoad").onclick = async () => {
     <td class="asis">${esc(r.as_is)}</td><td class="tobe">${esc(r.to_be)}</td><td>${esc(r.type)}</td>
     <td>${esc(r.reason)}${r.needs_web ? " 🔎" : ""}</td><td>${esc((r.verify || {}).verdict || "")}</td><td>${esc(r.suggest)}</td><td>${esc(r.decision)}</td></tr>`).join("");
 };
-(async () => { await loadJobs(); await loadSources(); poll(); setInterval(poll, 3000); })();
+(async () => { await loadJobs(); await loadSources(); poll(); dash(); setInterval(poll, 3000); setInterval(dash, 15000); })();
 </script>
 </body>
 </html>

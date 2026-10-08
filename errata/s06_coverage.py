@@ -181,11 +181,11 @@ def _chapter(u: dict, subj_of_slug: Dict[str, int]):
     return None
 
 
-def write_grid(wb, job: Job, units: List[dict], reviews: Dict[str, dict], links: Dict[str, List[str]]) -> None:
-    """「진행표」 — 과목 × 강(롱폼 L01~) × 산물. 칸 = 본 것/전체, 다 보면 진하게·일부면 옅게 칠한다.
-    문제집(Q)은 연결된 요약·롱폼 항목의 장으로, 문제풀이 영상(V)은 그 문항을 따라간다(V 는 Q 검토에서 함께 본다).
+def grid_compute(job: Job, units: List[dict], reviews: Dict[str, dict], links: Dict[str, List[str]]) -> dict:
+    """진행표 계산 — 엑셀 「진행표」와 웹 대시보드가 같이 쓴다.
+    과목 × 강(롱폼 L01~) × 산물. 칸 = 본 것/전체. 문제집(Q)은 연결된 요약·롱폼 항목의 장으로,
+    문제풀이 영상(V)은 그 문항을 따라간다(V 는 Q 검토에서 함께 본다).
     예상 완료 = 남은 배치 수 × 지금까지 배치당 평균 초(사용 한도 대기는 넣지 않았다)."""
-    from openpyxl.styles import Alignment, Font, PatternFill
     from errata.s03_review import _batches
     U = {u["uid"]: u for u in units}
     subj_of_slug = {}
@@ -209,12 +209,13 @@ def write_grid(wb, job: Job, units: List[dict], reviews: Dict[str, dict], links:
                     ch_of.setdefault(d, ch_of[q])
     q_of_v = {d: q for q, ds in links.items() for d in ds if d.startswith("V:")}
 
-    # 예상 완료
     order = (job.get("review.order") or list("QLBST"))
-    pend = [b for b, _ in _batches(units, order, []) if b not in reviews]
+    allb = _batches(units, order, [])
+    pend = [b for b, _ in allb if b not in reviews]
     secs = [d.get("sec") or 0 for d in reviews.values() if d.get("sec")]
     avg = (sum(secs) / len(secs)) if secs else 60
-    eta = {b: time.time() + avg * (i + 1) for i, b in enumerate(pend)}
+    now = time.time()
+    eta = {b: now + avg * (i + 1) for i, b in enumerate(pend)}
 
     def done(u: dict) -> bool:
         if u["product"] == "V":
@@ -235,14 +236,66 @@ def write_grid(wb, job: Job, units: List[dict], reviews: Dict[str, dict], links:
             unplaced[u["product"]] += 1
             continue
         cell[(lec, u["product"])].append(u)
-
     lec_subj: Dict[str, int] = {}
     lec_chs: Dict[str, List[tuple]] = collections.defaultdict(list)
     for c, lec in sorted(lec_of_ch.items()):
         lec_subj.setdefault(lec, c[0])
         lec_chs[lec].append(c)
     subjects = job.pack().get("subjects") or {}
+    rows = []
+    for lec in sorted(lec_subj, key=lambda k: (lec_subj[k], k)):
+        s, chs, etas, cells = lec_subj[lec], lec_chs[lec], [], []
+        for p, _ in cols:
+            us = cell.get((lec, p), [])
+            cells.append({"p": p, "n": sum(1 for u in us if done(u)), "t": len(us)})
+            for u in us:
+                b = u.get("batch") if p != "V" else (U.get(q_of_v.get(u["uid"], "")) or {}).get("batch")
+                if b in eta:
+                    etas.append(eta[b])
+        rows.append({"subj": s, "subj_name": subjects.get(s, subjects.get(str(s), "")), "lec": lec, "lec_no": int(lec[1:]),
+                     "chs": f"{chs[0][0]}-{chs[0][1]:02d}" + (f" ~ {chs[-1][0]}-{chs[-1][1]:02d}" if len(chs) > 1 else ""),
+                     "cells": cells, "eta": max(etas) if etas else None})
 
+    # 산물 카드 — 검토 순서대로. 지적은 검토 결과 파일에서 바로 센다(정오표 단계 전에도 보이게).
+    by_p: Dict[str, List[str]] = collections.defaultdict(list)
+    for b, _ in allb:
+        by_p[b.split(":")[0]].append(b)
+    cur = pend[0] if pend else ""
+    products = []
+    for p in order:
+        bs = by_p.get(p) or []
+        if not bs:
+            continue
+        got = [reviews[b] for b in bs if b in reviews]
+        sev = collections.Counter(f.get("severity") for d in got for f in d.get("findings") or [])
+        left = [b for b in bs if b not in reviews]
+        products.append({"p": p, "name": PRODUCTS.get(p, p), "done": len(got), "total": len(bs),
+                         "sev": {k: sev.get(k, 0) for k in ("상", "중", "하")},
+                         "finished_at": max((d.get("at") or 0) for d in got) if got and not left else None,
+                         "eta": eta[left[-1]] if left and left[-1] in eta else None,
+                         "current": bool(cur and cur.split(":")[0] == p)})
+    return {"cols": cols, "rows": rows, "products": products, "order": order, "pending": len(pend), "avg": avg,
+            "unplaced": dict(unplaced), "current": cur, "eta_all": (now + avg * len(pend)) if pend else None}
+
+
+def grid_data(job: Job) -> dict:
+    """대시보드용 — 파일을 읽어 grid_compute."""
+    units = read_jsonl(job.p("00_대상", "units.jsonl"))
+    links = read_json(job.p("00_대상", "links.json"), {}) or {}
+    rdir = job.p("03_검토")
+    reviews = {}
+    for p in sorted(rdir.glob("*.json")) if rdir.exists() else []:
+        d = read_json(p, {}) or {}
+        if d.get("batch"):
+            reviews[d["batch"]] = d
+    return grid_compute(job, units, reviews, links)
+
+
+def write_grid(wb, job: Job, units: List[dict], reviews: Dict[str, dict], links: Dict[str, List[str]]) -> None:
+    """「진행표」 시트 — 칸 = 본 것/전체, 다 보면 진하게·일부면 옅게 칠한다."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    g = grid_compute(job, units, reviews, links)
+    cols = g["cols"]
     ws = wb.create_sheet("진행표", 0)
     full, part, none_ = PatternFill("solid", fgColor="8EA9DB"), PatternFill("solid", fgColor="DDEBF7"), PatternFill("solid", fgColor="F2F2F2")
     bold, center = Font(bold=True), Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -251,48 +304,34 @@ def write_grid(wb, job: Job, units: List[dict], reviews: Dict[str, dict], links:
     ws.append(["과목", "강", "장"] + [n for _, n in cols] + ["이 강 예상 완료"])
     for i in range(1, len(cols) + 5):
         ws.cell(2, i).font, ws.cell(2, i).alignment = bold, center
-    widths = [14, 6, 16] + [12] * len(cols) + [16]
-    for i, w in enumerate(widths, 1):
+    for i, w in enumerate([14, 6, 16] + [12] * len(cols) + [16], 1):
         ws.column_dimensions[openpyxl_col(i)].width = w
-    start, prev = 3, None
-    for lec in sorted(lec_subj, key=lambda k: (lec_subj[k], k)):
-        s = lec_subj[lec]
-        chs = lec_chs[lec]
-        row = [f"{s}과목 {subjects.get(s, '')}".strip() if s != prev else "", f"{int(lec[1:])}강",
-               f"{chs[0][0]}-{chs[0][1]:02d}" + (f" ~ {chs[-1][0]}-{chs[-1][1]:02d}" if len(chs) > 1 else "")]
-        etas = []
-        for p, _ in cols:
-            us = cell.get((lec, p), [])
-            n = sum(1 for u in us if done(u))
-            row.append(f"{n}/{len(us)}" if us else "—")
-            for u in us:
-                b = u.get("batch") if p != "V" else (U.get(q_of_v.get(u["uid"], "")) or {}).get("batch")
-                if b in eta:
-                    etas.append(eta[b])
-        row.append(dt.datetime.fromtimestamp(max(etas)).strftime("%m-%d %H:%M") if etas else "완료")
+    prev = None
+    for r0 in g["rows"]:
+        s = r0["subj"]
+        row = [f"{s}과목 {r0['subj_name']}".strip() if s != prev else "", f"{r0['lec_no']}강", r0["chs"]]
+        row += [f"{c['n']}/{c['t']}" if c["t"] else "—" for c in r0["cells"]]
+        row.append(dt.datetime.fromtimestamp(r0["eta"]).strftime("%m-%d %H:%M") if r0["eta"] else "완료")
         ws.append(row)
         r = ws.max_row
-        for i, (p, _) in enumerate(cols, 4):
-            v = ws.cell(r, i).value
+        for i, c in enumerate(r0["cells"], 4):
             ws.cell(r, i).alignment = center
-            if v == "—":
+            if not c["t"]:
                 ws.cell(r, i).fill = none_
-            else:
-                n, t = map(int, v.split("/"))
-                if n and n == t:
-                    ws.cell(r, i).fill = full
-                elif n:
-                    ws.cell(r, i).fill = part
+            elif c["n"] == c["t"]:
+                ws.cell(r, i).fill = full
+            elif c["n"]:
+                ws.cell(r, i).fill = part
         ws.cell(r, len(cols) + 4).alignment = center
         prev = s
     ws.freeze_panes = "D3"
     end = ws.max_row
     ws.append([])
     ws.append(["", "칠", "진하게 = 다 봤다 · 옅게 = 일부 · 흰 칸 = 아직 · 회색 = 그 강에 해당 산물 없음. 칸 = 검토를 거친 단위 / 그 강의 단위."])
-    ws.append(["", "순서", f"검토는 산물 순서 {' → '.join(order)} 로 돈다(job.json review.order) — 한 산물을 다 보고 다음 산물로 넘어간다."])
-    ws.append(["", "예상", f"남은 배치 {len(pend)}개 × 배치당 평균 {avg:.0f}초 기준. 사용 한도 대기·재검증(verify)·정오표 단계 시간은 넣지 않았다."])
+    ws.append(["", "순서", f"검토는 산물 순서 {' → '.join(g['order'])} 로 돈다(job.json review.order) — 한 산물을 다 보고 다음 산물로 넘어간다."])
+    ws.append(["", "예상", f"남은 배치 {g['pending']}개 × 배치당 평균 {g['avg']:.0f}초 기준. 사용 한도 대기·재검증(verify)·정오표 단계 시간은 넣지 않았다."])
     ws.append(["", "기준", "문제집은 연결된 요약·롱폼 항목이 가장 많은 장의 강에, 문제집 영상은 그 문항을 따라 붙였다(영상 낭독은 문항 검토에서 함께 본다)."
-               + (f" 강에 붙이지 못한 단위: {', '.join(f'{PRODUCTS[k]} {v}' for k, v in unplaced.items())}." if unplaced else "")])
+               + (f" 강에 붙이지 못한 단위: {', '.join(f'{PRODUCTS[k]} {v}' for k, v in g['unplaced'].items())}." if g["unplaced"] else "")])
     for r in range(end + 2, ws.max_row + 1):
         ws.cell(r, 3).alignment = Alignment(wrap_text=False)
 

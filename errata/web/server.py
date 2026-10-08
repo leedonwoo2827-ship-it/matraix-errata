@@ -281,6 +281,25 @@ def progress(job: str = "") -> Dict[str, Any]:
             "trial_only": j.get("trial_only", "")}
 
 
+_DASH: Dict[str, Any] = {}
+
+
+@app.get("/api/dashboard")
+def dashboard(job: str = "") -> Dict[str, Any]:
+    """진행 카드·진행표 — 검토 결과 파일을 세어 만든다(10초 캐시)."""
+    from errata import s06_coverage
+    j = _job(job)
+    hit = _DASH.get(j.name)
+    if hit and time.time() - hit[0] < 10:
+        return hit[1]
+    g = s06_coverage.grid_data(j)
+    g["cols"] = [{"p": p, "name": n} for p, n in g["cols"]]
+    g["stage"] = (read_json(j.p("progress.json"), {}) or {}).get("stage", "")
+    g["run"] = RUN.info()
+    _DASH[j.name] = (time.time(), g)
+    return g
+
+
 @app.get("/api/findings")
 def findings(job: str = "", product: str = "", severity: str = "", origin: str = "", limit: int = 300) -> Dict[str, Any]:
     j = _job(job)
