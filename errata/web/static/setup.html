@@ -98,6 +98,12 @@ function chip(st) {
 }
 async function loadJobs() {
   const js = await api("/api/jobs");
+  if (!js.length) {                                   // 잡이 없다 = 아직 「처음 시작」 전
+    $("#msgs").innerHTML = `<div class="empty"><b>아직 잡이 없습니다.</b><br><br>VSCode 의 <b>Claude Code 대화</b>에 시작 프롬프트를 붙여 넣으면
+      시험·산물 폴더·검수단을 정하고 잡을 만듭니다(README 「시작 프롬프트」).<br>잡이 생기면 이 화면을 새로 고치세요 — 과목이 왼쪽에 나타납니다.</div>`;
+    $("#label").textContent = "잡 없음";
+    return;
+  }
   $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join("");
   JOB = new URLSearchParams(location.search).get("job") || js[0] || "";
   $("#job").value = JOB;
