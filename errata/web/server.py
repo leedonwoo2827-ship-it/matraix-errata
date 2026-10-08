@@ -37,12 +37,13 @@ class Runner:
         self.started = 0.0
         self.ended = 0.0
         self.code: Optional[int] = None
+        self.chain: List[List[str]] = []     # 앞 단계가 성공하면 이어서 돌릴 것(「＋ 새 시험 시작」의 ingest → panel 등)
         self.lock = threading.Lock()
 
     def running(self) -> bool:
         return bool(self.proc and self.proc.poll() is None)
 
-    def start(self, args: List[str]) -> None:
+    def start(self, args: List[str], chain: Optional[List[List[str]]] = None) -> None:
         with self.lock:
             if self.running():
                 raise HTTPException(409, "이미 실행 중입니다 — 끝나거나 중지한 뒤 다시 누르십시오")
@@ -51,21 +52,30 @@ class Runner:
             if LOG.exists() and LOG.stat().st_size:
                 LOG.replace(LOG.with_name(f"web-run_{time.strftime('%m%d-%H%M%S')}.log"))
             fh = LOG.open("w", encoding="utf-8")
-            fh.write(f"$ run.bat {' '.join(args)}\n")
-            fh.flush()
-            env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
-            self.proc = subprocess.Popen([sys.executable, "-m", "errata", *args], cwd=str(REPO),
-                                         stdout=fh, stderr=subprocess.STDOUT, env=env)
-            self.cmd, self.started, self.ended, self.code = args, time.time(), 0.0, None
-            threading.Thread(target=self._wait, args=(fh,), daemon=True).start()
+            self.chain = list(chain or [])
+            self._launch(args, fh)
+
+    def _launch(self, args: List[str], fh) -> None:
+        fh.write(f"$ run.bat {' '.join(args)}\n")
+        fh.flush()
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", PYTHONUTF8="1", PYTHONUNBUFFERED="1")
+        self.proc = subprocess.Popen([sys.executable, "-m", "errata", *args], cwd=str(REPO),
+                                     stdout=fh, stderr=subprocess.STDOUT, env=env)
+        self.cmd, self.started, self.ended, self.code = args, time.time(), 0.0, None
+        threading.Thread(target=self._wait, args=(fh,), daemon=True).start()
 
     def _wait(self, fh) -> None:
         code = self.proc.wait()
-        self.code, self.ended = code, time.time()
         fh.write(f"\n[종료 코드 {code}]\n")
+        if code == 0 and self.chain:              # 이어서 — 같은 로그에 붙인다
+            self._launch(self.chain.pop(0), fh)
+            return
+        self.chain = []
+        self.code, self.ended = code, time.time()
         fh.close()
 
     def stop(self) -> None:
+        self.chain = []
         if self.running():
             if os.name == "nt":
                 subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.proc.pid)], capture_output=True)
@@ -74,7 +84,7 @@ class Runner:
 
     def info(self) -> Dict[str, Any]:
         return {"running": self.running(), "cmd": self.cmd, "started": self.started,
-                "ended": self.ended, "code": self.code}
+                "ended": self.ended, "code": self.code, "next": [c[0] for c in self.chain]}
 
 
 RUN = Runner()
@@ -137,6 +147,70 @@ def api_subject_confirm(body: Dict[str, Any]) -> Dict[str, Any]:
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"confirmed": s, "confirmed_text": S.render(s)}
+
+
+# ── 처음 시작 — 시작 프롬프트를 붙여 넣는 대화(errata/start.py). 만들기·실행은 버튼으로 ─────────────
+def _start_state() -> Dict[str, Any]:
+    from errata import start as ST
+    c = ST.load()
+    spec = c.get("spec")
+    slug = c.get("created") or ""
+    panel = ""
+    if slug and (JOBS / slug / "01_선정" / "패널명부.md").exists():
+        panel = (JOBS / slug / "01_선정" / "패널명부.md").read_text(encoding="utf-8")
+    tail = ""
+    if LOG.exists():
+        tail = "\n".join(LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-14:])
+    return {"messages": c.get("messages") or [], "spec": spec, "check": ST.check(spec) if spec else None,
+            "created": slug, "panel": panel, "run": RUN.info(), "log": tail}
+
+
+@app.get("/api/start")
+def api_start() -> Dict[str, Any]:
+    return _start_state()
+
+
+@app.post("/api/start/chat")
+def api_start_chat(body: Dict[str, Any]) -> Dict[str, Any]:
+    from errata import start as ST
+    try:
+        ST.turn(str(body.get("message") or ""))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"시작 조교 호출 실패: {e}")
+    return _start_state()
+
+
+@app.post("/api/start/create")
+def api_start_create(body: Dict[str, Any]) -> Dict[str, Any]:
+    from errata import start as ST
+    try:
+        slug = ST.create(bool(body.get("overwrite")))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    RUN.start(["ingest", "--job", slug], chain=[["panel", "--job", slug] + (["--force"] if body.get("overwrite") else [])])
+    return _start_state()
+
+
+@app.post("/api/start/run")
+def api_start_run(body: Dict[str, Any]) -> Dict[str, Any]:
+    """mode: trial_all(1회차 시험 → 전체) · trial · all"""
+    from errata import start as ST
+    slug = ST.load().get("created") or body.get("job") or ""
+    if not slug:
+        raise HTTPException(400, "먼저 「만들고 검수단 뽑기」를 누르십시오")
+    mode = body.get("mode") or "trial_all"
+    if mode == "trial_all":
+        RUN.start(["trial", "--job", slug], chain=[["all", "--job", slug]])
+    else:
+        RUN.start([mode if mode in ("trial", "all") else "all", "--job", slug])
+    return _start_state()
+
+
+@app.post("/api/start/reset")
+def api_start_reset() -> Dict[str, Any]:
+    from errata import start as ST
+    ST.reset()
+    return _start_state()
 
 
 @app.get("/api/jobs")

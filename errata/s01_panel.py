@@ -12,6 +12,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+from pathlib import Path
 
 from errata.config import Job
 from errata.util import log, read_json, warn, write_json
@@ -24,7 +25,8 @@ LABEL = {
     "age_bracket": "나이", "region": "지역", "lang_korean": "한국어", "domain": "분야",
     "domain_characteristics": "성격", "role_function": "직무", "highest_education": "학력",
     "years_experience": "경력", "fam_data_science": "데이터과학", "fam_statistics": "통계",
-    "skill_data_analysis": "데이터분석", "skill_fact_checking": "사실확인", "skill_editing": "교정",
+    "skill_data_analysis": "데이터분석", "skill_fact_checking": "사실확인", "ind_publishing": "출판",
+    "skill_proofreading": "교정", "skill_editing": "편집",
     "skill_mathematics": "수학", "skill_coding": "코딩",
 }
 
@@ -47,6 +49,9 @@ def _bio(persona: dict) -> str:
         if v not in (None, "", []):
             bits.append(f"{lab} {v if not isinstance(v, list) else '·'.join(map(str, v))}")
     return " · ".join(bits)
+
+
+MAX_SHARDS = 6          # 페르소나 조각(약 1/10 씩) 최대 몇 개까지 넓혀 뽑나
 
 
 def yaml_load(p) -> dict:
@@ -79,18 +84,29 @@ def run(job: Job, force: bool = False) -> dict:
         log(f"  페르소나 코드 받기 — {PERSONA_REPO}")
         if subprocess.run(["git", "clone", "--depth", "1", PERSONA_REPO, "MatrAIx-Persona-8B"], cwd=str(ENGINE)).returncode:
             raise SystemExit("페르소나 코드를 받지 못했습니다 (git 이 있어야 합니다)")
-    shards = (yaml_load(job.pack_dir / "persona.yaml").get("source") or {})
-    rel = Path(shards.get("local") or "")
-    if not all((ENGINE / rel / s).exists() for s in shards.get("shards") or []):
-        log("  페르소나 데이터 조각 내려받기 (Hugging Face · 처음 한 번)")
-        if subprocess.run([sys.executable, str(TOOLS / "fetch_persona.py"), pack], cwd=str(ENGINE), env=env).returncode:
-            raise SystemExit("페르소나 데이터를 받지 못했습니다 — 위 메시지를 보십시오")
-    log(f"  엔진 sample_panel.py {pack} {unit} (조각 2개 · 수십 초)")
-    r = subprocess.run([sys.executable, str(TOOLS / "sample_panel.py"), pack, unit], cwd=str(ENGINE), env=env)
+    # 자리를 못 채우면 조각을 하나씩 더 받아 다시 뽑는다(최대 MAX_SHARDS). 순서가 정해져 있어 다시 돌려도 같은 명부가 나온다.
+    import yaml
+    pcfg = yaml_load(epack / "persona.yaml")
+    src_cfg = pcfg.setdefault("source", {})
+    rel = Path(src_cfg.get("local") or "")
+    order = list(src_cfg.get("shards") or []) + [f"data/persona-1m-{i:04d}.parquet" for i in (3, 2, 1, 0, 6, 7, 8, 9)]
     src = ENGINE / "data" / pack / unit / "01_선정" / f"01_{unit}_패널.json"
-    if r.returncode != 0 or not src.exists():
-        raise SystemExit("패널 추출 실패 (엔진 sample_panel.py) — 위 메시지를 보십시오")
-    doc = read_json(src, {})
+    while True:
+        if not all((ENGINE / rel / s).exists() for s in src_cfg.get("shards") or []):
+            log(f"  페르소나 데이터 조각 내려받기 (Hugging Face · 조각 {len(src_cfg['shards'])}개, 처음 한 번)")
+            if subprocess.run([sys.executable, str(TOOLS / "fetch_persona.py"), pack], cwd=str(ENGINE), env=env).returncode:
+                raise SystemExit("페르소나 데이터를 받지 못했습니다 — 위 메시지를 보십시오")
+        log(f"  엔진 sample_panel.py {pack} {unit} (조각 {len(src_cfg['shards'])}개 · 수십 초)")
+        r = subprocess.run([sys.executable, str(TOOLS / "sample_panel.py"), pack, unit], cwd=str(ENGINE), env=env)
+        if r.returncode != 0 or not src.exists():
+            raise SystemExit("패널 추출 실패 (엔진 sample_panel.py) — 위 메시지를 보십시오")
+        doc = read_json(src, {})
+        more = [s for s in order if s not in src_cfg["shards"]]
+        if not doc.get("shortfall") or len(src_cfg["shards"]) >= MAX_SHARDS or not more:
+            break
+        src_cfg["shards"].append(more[0])
+        warn(f"자리를 못 채웠습니다({' / '.join(doc['shortfall'])}) → 조각 {more[0]} 를 더해 다시 뽑습니다")
+        (epack / "persona.yaml").write_text(yaml.safe_dump(pcfg, allow_unicode=True, sort_keys=False), encoding="utf-8")
     seed = int(doc.get("seed") or 0)
     used: set = set()
     import yaml

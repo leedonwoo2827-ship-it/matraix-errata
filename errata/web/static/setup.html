@@ -51,6 +51,13 @@ dialog .dh b{flex:1}
 dialog .db{padding:14px 18px;max-height:62vh;overflow:auto}
 dialog dl{margin:0}dialog dt{font-weight:700;margin-top:10px}dialog dd{margin:2px 0 0 0;white-space:pre-wrap}
 dialog .note{font-size:12px;color:var(--mut);padding:0 18px 14px}
+.startbtn{margin:4px 8px 6px;padding:10px;border:1px dashed var(--acc);border-radius:8px;color:var(--acc);cursor:pointer;font-weight:600}
+.startbtn.on{background:var(--acc2);border-style:solid}
+.panel{align-self:stretch;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:12px 14px}
+.panel pre{background:var(--bg);border-radius:6px;padding:8px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap;max-height:220px;overflow:auto;margin:8px 0 0}
+.panel .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+table.c{border-collapse:collapse;width:100%;font-size:13px}table.c td,table.c th{border-bottom:1px solid var(--line);padding:5px 6px;text-align:left;vertical-align:top}
+.ok{color:var(--ok)}.bad{color:#d33}
 @media (max-width:760px){body{grid-template-columns:1fr;grid-template-rows:auto 1fr}aside{max-height:38vh}}
 </style>
 </head>
@@ -61,6 +68,7 @@ dialog .note{font-size:12px;color:var(--mut);padding:0 18px 14px}
     <div class="sub" id="label">—</div>
     <select id="job"></select>
   </div>
+  <div class="startbtn" id="startBtn">＋ 새 시험 시작</div>
   <div class="list" id="list"></div>
   <div class="foot">대화로 세팅안을 만들고 <b>[확정]</b>을 눌러야 검토에 쓰입니다.<br><a href="/">← 검수엔진으로</a></div>
 </aside>
@@ -86,7 +94,7 @@ dialog .note{font-size:12px;color:var(--mut);padding:0 18px 14px}
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const COLORS = ["#3b82f6","#10b981","#f59e0b","#ec4899","#8b5cf6","#14b8a6","#ef4444"];
-let JOB = "", CUR = null, FIELDS = {}, BUSY = false, DATA = null;
+let JOB = "", CUR = null, FIELDS = {}, BUSY = false, DATA = null, MODE = "subject", ST = null, POLL = null;
 async function api(u, o) {
   const r = await fetch(u, o);
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m } catch (e) {} throw new Error(m) }
@@ -98,12 +106,7 @@ function chip(st) {
 }
 async function loadJobs() {
   const js = await api("/api/jobs");
-  if (!js.length) {                                   // 잡이 없다 = 아직 「처음 시작」 전
-    $("#msgs").innerHTML = `<div class="empty"><b>아직 잡이 없습니다.</b><br><br>VSCode 의 <b>Claude Code 대화</b>에 시작 프롬프트를 붙여 넣으면
-      시험·산물 폴더·검수단을 정하고 잡을 만듭니다(README 「시작 프롬프트」).<br>잡이 생기면 이 화면을 새로 고치세요 — 과목이 왼쪽에 나타납니다.</div>`;
-    $("#label").textContent = "잡 없음";
-    return;
-  }
+  if (!js.length) { $("#label").textContent = "잡 없음 — 새 시험부터"; return openStart(); }
   $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join("");
   JOB = new URLSearchParams(location.search).get("job") || js[0] || "";
   $("#job").value = JOB;
@@ -123,10 +126,13 @@ async function loadList() {
 }
 async function open(n, title) {
   if (BUSY) return;
+  MODE = "subject"; $("#startBtn").classList.remove("on");
   CUR = n; $("#title").textContent = title; await loadList();
   DATA = await api(`/api/subject?job=${encodeURIComponent(JOB)}&n=${encodeURIComponent(n)}`);
   $("#status").outerHTML = chip(DATA.status).replace('class="chip', 'id="status" class="chip');
+  $("#viewConf").textContent = "확정된 세팅"; $("#viewConf").onclick = viewConf;
   $("#viewConf").disabled = !DATA.confirmed_text;
+  $("#text").placeholder = "답을 적으세요 (Enter 보내기 · Shift+Enter 줄바꿈)";
   $("#text").disabled = $("#send").disabled = false;
   render();
   if (!DATA.messages.length) send("__start__");
@@ -164,26 +170,117 @@ function dl(obj) {
   }).join("") || "<dd>(빈 세팅)</dd>"}</dl>`;
 }
 function showDraft() {
+  $("#dConfirm").textContent = "확정";
+  $("#dConfirm").onclick = confirmDraft;
   $("#dTitle").textContent = $("#title").textContent + " 세팅안 (확정 전)";
   $("#dBody").innerHTML = dl(DATA.draft);
   $("#dConfirm").style.display = "";
   $("#dNote").textContent = "확정하면 data/pack/<팩>/subjects.yaml 에 저장되고, 이 과목 단위가 든 검토 배치부터 검수단 프롬프트에 들어갑니다. 이미 끝난 배치는 다시 돌리지 않습니다.";
   $("#dlg").showModal();
 }
-$("#viewConf").onclick = () => {
+const viewConf = () => {
   $("#dTitle").textContent = $("#title").textContent + " 확정된 세팅 · " + (DATA.confirmed.confirmed_at || "");
   $("#dBody").innerHTML = dl(DATA.confirmed); $("#dConfirm").style.display = "none";
   $("#dNote").textContent = "data/pack/<팩>/subjects.yaml"; $("#dlg").showModal();
 };
-$("#dConfirm").onclick = async () => {
+const confirmDraft = async () => {
   try {
     await api("/api/subject/confirm", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({job: JOB, n: CUR})});
     $("#dlg").close(); await open(CUR, $("#title").textContent);
   } catch (e) { alert(e.message) }
 };
 $("#dClose").onclick = () => $("#dlg").close();
-$("#send").onclick = () => send($("#text").value);
-$("#text").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send($("#text").value) } };
+const go = () => MODE === "start" ? sendStart($("#text").value) : send($("#text").value);
+$("#send").onclick = go;
+$("#text").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); go() } };
+$("#startBtn").onclick = () => openStart();
+
+// ── 「＋ 새 시험 시작」 — 시작 프롬프트를 붙여 넣는 대화. 만들기·실행은 버튼 ─────────────────────────
+async function openStart() {
+  if (BUSY) return;
+  MODE = "start"; CUR = null; $("#startBtn").classList.add("on");
+  document.querySelectorAll(".item").forEach(el => el.classList.remove("on"));
+  $("#title").textContent = "＋ 새 시험 시작";
+  $("#viewConf").textContent = "새 대화"; $("#viewConf").disabled = false;
+  $("#viewConf").onclick = async () => { if (confirm("지금 대화를 보관하고 새로 시작할까요?")) { ST = await api("/api/start/reset", {method: "POST"}); renderStart() } };
+  $("#text").disabled = $("#send").disabled = false;
+  $("#text").placeholder = "시작 프롬프트를 붙여 넣으세요 (README 「시작 프롬프트」) · Enter 보내기 · Shift+Enter 줄바꿈";
+  ST = await api("/api/start"); renderStart(); pollStart();
+}
+function pollStart() {
+  clearInterval(POLL);
+  POLL = setInterval(async () => {
+    if (MODE !== "start" || BUSY) return;
+    const was = ST && ST.run && ST.run.running;
+    ST = await api("/api/start");
+    if (ST.run.running || was) renderStart();
+    if (was && !ST.run.running) loadJobsQuiet();
+  }, 3000);
+}
+async function loadJobsQuiet() {
+  const js = await api("/api/jobs");
+  if (js.length) { $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join(""); JOB = ST.created || js[0]; $("#job").value = JOB; loadList(); }
+}
+function renderStart(working) {
+  const m = ST.messages.map(x => x.role === "user"
+    ? `<div class="msg me">${esc(x.text)}</div>`
+    : `<div class="msg bot"><div class="who">시작 조교${x.sec ? ` · ${x.sec}초` : ""}</div>${esc(x.text)}</div>`).join("");
+  const card = ST.spec ? `<div class="card" id="openSpec"><span class="ic">시작안</span><div><b>${esc(ST.spec.label || ST.spec.slug || "새 시험")}</b>
+     <div class="sub">눌러서 검수단 조건·산물 폴더를 확인하고 만들기${ST.check && ST.check.warnings.length ? ` · ⚠ ${ST.check.warnings.length}` : ""}</div></div></div>` : "";
+  let panel = "";
+  if (ST.created) {
+    const r = ST.run, cmd = (r.cmd || [])[0] || "";
+    const state = r.running ? `실행 중 — ${esc(cmd)}${r.next && r.next.length ? " → " + esc(r.next.join(" → ")) : ""}` : (r.code === 0 ? `끝남 — ${esc(cmd)}` : (r.code == null ? "대기" : `멈춤(코드 ${r.code}) — ${esc(cmd)}`));
+    panel = `<div class="panel"><b>${esc(ST.created)}</b> · ${state}
+      ${ST.log ? `<pre>${esc(ST.log)}</pre>` : ""}
+      ${ST.panel ? `<details open><summary><b>검수단 명부</b> (01_선정/패널명부.md)</summary><pre>${esc(ST.panel)}</pre></details>` : ""}
+      <div class="row">
+        <button class="pri" id="runTA" ${r.running || !ST.panel ? "disabled" : ""}>1회차 시험 → 전체 실행</button>
+        <button id="runAll" ${r.running || !ST.panel ? "disabled" : ""}>전체 실행만</button>
+        <button id="runStop" ${r.running ? "" : "disabled"}>중지</button>
+        <a href="/"><button>진행 화면(③ 진행) →</button></a>
+      </div><div class="sub" style="margin-top:6px">전체 실행은 수 시간 걸립니다. 서버 창(run.bat)을 닫지 마세요 — 브라우저는 닫아도 됩니다.</div></div>`;
+  }
+  const w = working ? `<div class="work">시작 조교 작업 중 · <span id="sec">0</span>초</div>` : "";
+  $("#msgs").innerHTML = (m + card + panel + w) || `<div class="empty"><b>시작 프롬프트를 아래에 붙여 넣으세요.</b><br><br>시험 · 과목 · 산물 폴더 · 검수단 · 규칙을 적으면
+     조교가 빠진 것만 묻고 「시작안」 카드를 만듭니다. 카드에서 확인하고 [만들고 검수단 뽑기] → [1회차 시험 → 전체 실행].</div>`;
+  if ($("#openSpec")) $("#openSpec").onclick = showSpec;
+  const post = (u, b) => api(u, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(b || {})});
+  if ($("#runTA")) $("#runTA").onclick = async () => { ST = await post("/api/start/run", {mode: "trial_all"}); renderStart() };
+  if ($("#runAll")) $("#runAll").onclick = async () => { if (confirm("1회차 시험 없이 바로 전체를 돌릴까요?")) { ST = await post("/api/start/run", {mode: "all"}); renderStart() } };
+  if ($("#runStop")) $("#runStop").onclick = async () => { await api("/api/stop", {method: "POST"}); ST = await api("/api/start"); renderStart() };
+  $("#msgs").scrollTop = $("#msgs").scrollHeight;
+}
+async function sendStart(text) {
+  if (BUSY || !text.trim()) return;
+  ST.messages.push({role: "user", text}); BUSY = true; $("#send").disabled = true; $("#text").value = "";
+  renderStart(true);
+  const t0 = Date.now(), tick = setInterval(() => { const s = $("#sec"); if (s) s.textContent = Math.round((Date.now() - t0) / 1000) }, 1000);
+  try { ST = await api("/api/start/chat", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message: text})}) }
+  catch (e) { ST.messages.push({role: "assistant", text: "⚠ " + e.message}) }
+  finally { clearInterval(tick); BUSY = false; $("#send").disabled = false; renderStart() }
+}
+function showSpec() {
+  const s = ST.spec, c = ST.check || {sources: [], warnings: [], conditions: []};
+  const kv = (k, v) => `<dt>${esc(k)}</dt><dd>${esc(typeof v === "object" ? JSON.stringify(v, null, 1).replace(/[{}"]/g, "").trim() : v)}</dd>`;
+  $("#dTitle").textContent = `시작안 — ${s.label || s.slug}`;
+  $("#dBody").innerHTML = `${c.warnings.length ? `<div class="bad"><b>⚠ 확인할 것</b><br>${c.warnings.map(esc).join("<br>")}</div>` : ""}
+    <dl>${kv("팩·잡 이름", s.slug)}${kv("시험", `${s.label || ""} (${s.exam || ""}) · ${s.choices || 4}지선다`)}${kv("과목", s.subjects || {})}${kv("범위", s.scope || "")}</dl>
+    <dt style="margin-top:10px;font-weight:700">산물 폴더 (읽기만)</dt>
+    <table class="c">${c.sources.map(x => `<tr><td>${esc(x.key)}</td><td class="${x.ok ? "ok" : (x.path ? "bad" : "")}">${x.ok ? "✓" : (x.path ? "✗" : "—")}</td><td>${esc(x.path)}<div class="sub">${esc(x.count)}</div></td></tr>`).join("")}</table>
+    <dt style="margin-top:10px;font-weight:700">검수단 조건</dt>
+    <table class="c"><tr><th>자리</th><th>관점·층</th><th>명</th><th>조건</th></tr>${c.conditions.map(r => `<tr><td>${esc(r.seat)}</td><td>${esc(r.view)}</td><td>${esc(r.n)}</td><td>${esc(r.cond)}</td></tr>`).join("")}</table>
+    <dl>${kv("금지어", s.banned_words || {})}${kv("쇼츠 라벨 — 맞음", (s.right_labels || []).join(", "))}${kv("쇼츠 라벨 — 틀림", (s.wrong_labels || []).join(", "))}
+    ${kv("검토 순서", (s.review_order || []).join(" → "))}${kv("1회차 시험 범위", s.trial_only || "")}</dl>
+    ${c.exists ? `<label><input type="checkbox" id="ow"> 이미 있는 「${esc(s.slug)}」 팩·잡을 덮어쓰기</label>` : ""}`;
+  $("#dConfirm").textContent = "만들고 검수단 뽑기"; $("#dConfirm").style.display = ST.created ? "none" : "";
+  $("#dNote").textContent = "고칠 것이 있으면 닫고 대화로 말하세요(예: 「E3 조건에서 교육자 대신 강사 경력 10년 이상」). 만들면 data/pack·data/jobs 에 파일이 생기고 ingest → panel 이 돕니다.";
+  $("#dConfirm").onclick = async () => {
+    try { ST = await api("/api/start/create", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({overwrite: !!($("#ow") && $("#ow").checked)})}); $("#dlg").close(); renderStart(); pollStart() }
+    catch (e) { alert(e.message) }
+  };
+  $("#dlg").showModal();
+}
 $("#job").onchange = () => { JOB = $("#job").value; CUR = null; loadList() };
 loadJobs().catch(e => $("#msgs").innerHTML = `<div class="empty">${esc(e.message)}</div>`);
 </script>

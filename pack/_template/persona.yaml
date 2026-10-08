@@ -1,7 +1,7 @@
 # ◆ADsP 예시 — 이 파일 전체가 ADsP 를 예로 채운 것이다. 새 시험에 맞게 자리(관점)·조건(차원 값)을 고친다.
 #   차원·값은 data/engine/MatrAIx-Persona-8B/persona/schema/dimensions.json 에 있는 것만 쓴다.
 # ═══════════════════════════════════════════════════════════════════════════
-#  ADsP 산물 검수단 — 검수진 4 + 수험생 6 (합 10명)
+#  ADsP 산물 검수단 — 검수진 5 + 수험생 6 (합 11명)
 #
 #  ★ 엔진(260810-MatrAIx-검토분석엔진)의 tools/sample_panel.py 가 읽는다.
 #    errata/s01_panel.py 가 이 파일을 엔진 packs/adsp-qa/persona.yaml 로 복사해서 돌린다.
@@ -30,9 +30,9 @@ common:
     - skill_data_analysis: [Master, Advanced, Intermediate, Beginner]
     - domain: [Software & AI]
 
-# ── 검수진 4명 — 판정하는 사람들 ────────────────────────────────────────────
+# ── 검수진 5명 — 판정하는 사람들 ────────────────────────────────────────────
 author:
-  n: 4
+  n: 5
   note: "ADsP 산물의 사실·정답·표기를 판정한다. 관점을 갈라 같은 것을 함께 놓치지 않게 한다."
   common:
     must:
@@ -82,6 +82,20 @@ author:
       prefer:
         skill_critical_thinking: [Master, Advanced]
         lang_korean: [Native, Fluent]
+
+    - id: E5
+      view: 출판 교정
+      asks: "출판 원고로서 맞춤법·띄어쓰기·문장부호·외래어 표기가 규범에 맞는가. 한 책 안에서 표기·용어·숫자·단위가 일관된가. 비문·중의문은 없는가."
+      # ★ 한국어 Native 를 필수로 두면 후보가 0명이다(60만 명 중 출판+교정+한국어 Native 1명, 실측 2026-10-08) → 우대로.
+      must:
+        ind_publishing: [Veteran, Experienced]
+      must_any:
+        - skill_proofreading: [Master, Advanced]
+        - skill_editing: [Master, Advanced]
+      prefer:
+        lang_korean: [Native, Fluent]
+        cog_precision_of_language: [Very precise, Precise]
+        years_experience: ["11-20", "20+"]
 
 # ── 수험생 6명 — 읽는 사람들 (층을 가른다) ─────────────────────────────────
 reviewer:
