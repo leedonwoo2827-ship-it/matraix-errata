@@ -19,7 +19,11 @@ data/            ★ 깃에 올리지 않는다
 `ERRATA_DATA=<폴더>` 로 data 위치를 바꿀 수 있다.
 
 ## 처음 시작 — 「시작」「새 시험」「검수 준비」를 받으면 이 대화를 한다
-`data/jobs/` 에 잡이 없거나 사용자가 새 시험을 말하면, **파일을 만들기 전에** 아래를 차례로 묻는다(한 번에 2~3개씩, 아는 것은 건너뛴다).
+0. **준비** — `.venv` 가 없으면 setup.bat 을 대신해 직접 깐다(setup.bat 은 pause 가 있어 대화에서 부르지 않는다):
+   `py -3.12 -m venv .venv` → `PYTHONUTF8=1` 로 `.venv\Scripts\python -m pip install -r requirements.txt` → `claude --version` 으로 CLI 로그인 확인.
+
+`data/jobs/` 에 잡이 없거나 사용자가 새 시험을 말하면, **파일을 만들기 전에** 아래를 차례로 묻는다(한 번에 2~3개씩).
+**시작 프롬프트에 이미 적힌 것은 다시 묻지 않는다** — 빠진 것만 묻는다.
 1. **시험** — 이름·약칭·주관 기관, 과목 구성(번호·이름), 문항 수·보기 수, 출제기준에서 범위로 삼을 것.
 2. **산물 폴더 4곳** — 문항 책 폴더 · 롱폼 잡 폴더 · 교재 폴더 · 쇼츠 폴더(없는 것은 빈칸). 쇼츠 과목 폴더 이름 패턴(◆ADsP 예 `ADsP-*`)과 요약노트 파일 이름(`03/summary_<이름>.html` → 과목 번호, pack.yaml `summary_files`).
    폴더를 받으면 열어 보고 구조가 `errata/ingest.py` 어댑터와 맞는지 확인한다. 다르면 어댑터를 더해야 한다고 말한다.
@@ -29,6 +33,7 @@ data/            ★ 깃에 올리지 않는다
 
 다 들으면 만든다(`pack/_template/` 을 복사해 채운다):
 `data/pack/<팩>/pack.yaml·persona.yaml·roles.yaml` → `data/jobs/<잡>/job.json`(`"pack": "<팩>"`) → `job.local.json`(산물 폴더, 웹앱 ①에서도 된다).
+만들기 전에 **persona.yaml 의 검수단 조건을 표로 보여 주고 확인받는다**(수험생 층에도 한국어 조건 `lang_korean` 을 넣는다 — 넣지 않으면 한국어 None 인 수험생이 뽑힌다).
 그다음 `run.bat ingest` → `run.bat panel`(처음이면 페르소나 코드·데이터를 받는다, 수 분) → 패널명부를 보여 주고 확인 → `run.bat trial`.
 
 ### 과목 세팅 — 과목마다 검수 기준을 대화로 정하고 확정한다
