@@ -184,7 +184,7 @@ def api_start_chat(body: Dict[str, Any]) -> Dict[str, Any]:
 def api_start_create(body: Dict[str, Any]) -> Dict[str, Any]:
     from errata import start as ST
     try:
-        slug = ST.create(bool(body.get("overwrite")))
+        slug = ST.create(bool(body.get("overwrite")), str(body.get("slug") or ""))
     except ValueError as e:
         raise HTTPException(400, str(e))
     RUN.start(["ingest", "--job", slug], chain=[["panel", "--job", slug] + (["--force"] if body.get("overwrite") else [])])

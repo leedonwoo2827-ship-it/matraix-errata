@@ -137,11 +137,14 @@ def turn(message: str) -> dict:
     return c
 
 
-def create(overwrite: bool = False) -> str:
-    """시작안 → 팩·잡 파일. 반환: 잡 이름."""
+def create(overwrite: bool = False, slug: str = "") -> str:
+    """시작안 → 팩·잡 파일. 반환: 잡 이름. slug 를 주면 시작안의 이름 대신 쓴다(카드에서 고친 이름)."""
     import yaml
     c = load()
     s = c.get("spec") or {}
+    if slug.strip():
+        s["slug"] = slug.strip().lower()
+        c["spec"] = s
     slug = (s.get("slug") or "").strip()
     if not slug or not slug.replace("-", "").replace("_", "").isalnum():
         raise ValueError("팩·잡 이름(slug)이 없거나 영문·숫자가 아닙니다")
