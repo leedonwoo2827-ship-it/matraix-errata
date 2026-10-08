@@ -1,4 +1,4 @@
-# ★ 템플릿 — 아래는 ADsP 예시다. 새 시험에 맞게 자리(관점)·조건(차원 값)을 고친다.
+# ◆ADsP 예시 — 이 파일 전체가 ADsP 를 예로 채운 것이다. 새 시험에 맞게 자리(관점)·조건(차원 값)을 고친다.
 #   차원·값은 data/engine/MatrAIx-Persona-8B/persona/schema/dimensions.json 에 있는 것만 쓴다.
 # ADsP 검수단 — 산물별 역할 (대략). 06_검수표/검수기록.xlsx 「검수단 역할」 시트가 읽는다.
 #

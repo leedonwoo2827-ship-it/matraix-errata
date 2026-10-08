@@ -1,7 +1,7 @@
 """s00 대상 — 산물 7종을 공통 단위 레코드로 편다. 원천 폴더에는 아무것도 쓰지 않는다.
 
 단위 레코드
-    uid       산물 안에서 유일한 열쇠        Q:m01-01 · V:m01-1#03 · S:understanding:1.3 · D:01_adsp-26-l01-s1-01#5
+    uid       산물 안에서 유일한 열쇠 (◆ADsP 예)  Q:m01-01 · V:m01-1#03 · S:understanding:1.3 · D:01_adsp-26-l01-s1-01#5
                                            L:L01-s1-03-001 · B:01:1.3 · T:q1-01-01#1
     product   Q V S D L B T
     batch     검토단에게 한 번에 읽히는 묶음(없으면 기계검사만)
@@ -33,7 +33,8 @@ PRODUCTS = {
     "B": "과목별 교재",
     "T": "용어 쇼츠",
 }
-SUBJECT_FILES = [("understanding", 1), ("planning", 2), ("analysis", 3)]
+# 요약노트 03/summary_<이름>.html → 과목 번호. pack.yaml summary_files 로 정한다(◆ADsP: understanding 1 · planning 2 · analysis 3).
+# 없으면 03/summary_*.html 을 이름 순으로 1, 2, 3 …
 
 
 def _u(**kw) -> dict:
@@ -165,9 +166,11 @@ def _refs(fragment: str) -> List[str]:
     return keys
 
 
-def ingest_s(book: Path) -> List[dict]:
+def ingest_s(book: Path, files: Dict[str, int] | None = None) -> List[dict]:
     out = []
-    for name, sno in SUBJECT_FILES:
+    if not files:
+        files = {f.stem[len("summary_"):]: i for i, f in enumerate(sorted((book / "03").glob("summary_*.html")), 1)}
+    for name, sno in files.items():
         f = book / "03" / f"summary_{name}.html"
         if not f.exists():
             continue
@@ -426,7 +429,7 @@ def run(job: Job) -> Dict[str, int]:
     if book:
         units += ingest_q(book, pack)
         units += ingest_v(book)
-        units += ingest_s(book)
+        units += ingest_s(book, {str(k): int(v) for k, v in (pack.get("summary_files") or {}).items()})
     else:
         warn("문항 책 폴더가 지정되지 않았거나 없습니다 — Q·V·S 를 건너뜁니다")
     if lf:
