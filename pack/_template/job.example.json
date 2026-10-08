@@ -1,0 +1,8 @@
+{
+  "name": "<잡이름>",
+  "label": "<시험 이름> — 산물 정오표",
+  "pack": "<팩이름>",
+  "llm": {"limit_wait_hours": 30, "limit_poll_min": 30, "retries": 3, "timeout_sec": 1800},
+  "review": {"order": ["Q", "L", "B", "S", "T"], "interim_every": 25},
+  "trial_only": ""
+}

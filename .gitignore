@@ -1,0 +1,10 @@
+# 데이터는 전부 data/ 한 곳에 - 잡/산출물/분야 팩/엔진 작업 폴더(페르소나 438MB)/로그. 저장소에는 도구와 pack/_template 만.
+data/
+.venv/
+__pycache__/
+*.pyc
+*.tmp
+_context/
+# 예전 위치(옮기기 전) - 남아 있어도 올리지 않는다
+jobs/
+logs/

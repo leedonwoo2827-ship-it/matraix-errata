@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>산물 검수엔진</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1b1f24;--mut:#5b6573;--line:#dde2e8;--acc:#1f5fbf;--acc2:#e8f0fc;--hi:#b42318;--mid:#9a6700;--ok:#067647;--log:#0f1419;--logfg:#d6dde6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1116;--card:#161b22;--fg:#e6e9ee;--mut:#9aa4b2;--line:#2b313a;--acc:#7fb0ff;--acc2:#1c2a40;--hi:#ff8a80;--mid:#e3b341;--ok:#6fdc9a;--log:#0a0d11;--logfg:#c9d1d9}}
+:root[data-theme="dark"]{--bg:#0e1116;--card:#161b22;--fg:#e6e9ee;--mut:#9aa4b2;--line:#2b313a;--acc:#7fb0ff;--acc2:#1c2a40;--hi:#ff8a80;--mid:#e3b341;--ok:#6fdc9a;--log:#0a0d11;--logfg:#c9d1d9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 "Pretendard","Noto Sans KR",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:2;flex-wrap:wrap}
+header h1{font-size:17px;margin:0}
+header .pill{font-size:12px;padding:2px 10px;border-radius:999px;background:var(--acc2);color:var(--acc)}
+main{max-width:1180px;margin:0 auto;padding:18px 16px 60px;display:grid;gap:16px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}
+section h2{font-size:15px;margin:0 0 12px}
+.src{display:grid;grid-template-columns:220px 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+.src .lab{font-weight:600}.src .cnt{grid-column:2/4;color:var(--mut);font-size:12px;margin-top:-4px}
+input[type=text]{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+button{font:inherit;padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--acc)}button.pri{background:var(--acc);border-color:var(--acc);color:#fff}
+button.danger{color:var(--hi)}button:disabled{opacity:.45;cursor:default}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.stages button{min-width:92px}
+.muted{color:var(--mut);font-size:12px}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:8px 0}
+.bar>i{display:block;height:100%;background:var(--acc);width:0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:8px}
+.kpi{border:1px solid var(--line);border-radius:8px;padding:10px}.kpi b{display:block;font-size:20px}
+pre#log{background:var(--log);color:var(--logfg);border-radius:8px;padding:12px;height:300px;overflow:auto;font:12px/1.5 ui-monospace,Consolas,monospace;margin:0;white-space:pre-wrap}
+pre#log .wait{color:#e3b341}
+.tbl{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
+th{white-space:nowrap;color:var(--mut);font-weight:600}
+td.sev-상{color:var(--hi);font-weight:700}td.sev-중{color:var(--mid);font-weight:600}
+td.asis{color:var(--hi)}td.tobe{color:var(--ok)}
+select{font:inherit;padding:6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+@media (max-width:720px){.src{grid-template-columns:1fr}.src .cnt{grid-column:1}}
+</style>
+</head>
+<body>
+<header>
+  <h1>산물 검수엔진 <span class="muted">MatrAIx × 정오표</span></h1>
+  <select id="job"></select>
+  <span class="pill" id="state">대기</span>
+  <span class="muted" id="clock"></span>
+</header>
+<main>
+  <section>
+    <h2>① 산물 폴더 <span class="muted">— 읽기만 합니다. 원천에는 아무것도 쓰지 않습니다</span></h2>
+    <div id="sources"></div>
+    <div class="row"><button class="pri" id="saveSrc">폴더 저장</button><span class="muted" id="srcMsg"></span></div>
+  </section>
+
+  <section>
+    <h2>② 실행</h2>
+    <div class="row stages">
+      <button data-stage="ingest">00 대상</button>
+      <button data-stage="panel">01 검수단</button>
+      <button data-stage="machine">02 기계검사</button>
+      <button data-stage="review">03 검토</button>
+      <button data-stage="verify">03b 재검증</button>
+      <button data-stage="merge">04 수용</button>
+      <button data-stage="errata">05 정오표</button>
+      <button data-stage="check">06 검수표</button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="pri" data-stage="trial" title="job.json trial_only 범위(1회차 세로 관통)">1회차 시험</button>
+      <button class="pri" data-stage="all">전체 실행 (무인)</button>
+      <button class="danger" id="stop">중지</button>
+      <label class="muted">범위 <input type="text" id="only" placeholder="비우면 전체 · 예: Q:m01-,L:L01:" style="width:260px"></label>
+      <label class="muted"><input type="checkbox" id="force"> 다시 만들기(--force)</label>
+    </div>
+    <p class="muted">전체 실행은 남은 검토 배치만 이어서 합니다. 사용 한도에 걸리면 풀릴 때까지 기다리고(⏸), PC 절전을 막습니다.
+      <b>이 서버 창(검은 창)은 닫지 마십시오.</b> 브라우저는 닫아도 됩니다.</p>
+  </section>
+
+  <section>
+    <h2>③ 진행</h2>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="muted" id="progTxt">—</div>
+    <div class="kpis" id="kpis"></div>
+    <div class="row" style="margin:12px 0">
+      <a href="#" id="dlx"><button>내부 정오표 엑셀</button></a>
+      <a href="#" id="dlh" target="_blank"><button>게시용 정오표 HTML</button></a>
+      <a href="#" id="dlhist" target="_blank"><button>이력</button></a>
+      <a href="#" id="dlpanel" target="_blank"><button>검수단 명부</button></a>
+      <button id="openDir">산출 폴더 열기</button>
+    </div>
+    <pre id="log"></pre>
+  </section>
+
+  <section>
+    <h2>④ 지적 미리보기 <span class="muted" id="fTotal"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <select id="fProd"><option value="">산물 전체</option><option value="Q">문항·해설</option><option value="V">문제풀이 영상</option>
+        <option value="S">요약노트</option><option value="D">덱</option><option value="L">롱폼</option><option value="B">교재</option><option value="T">쇼츠</option></select>
+      <select id="fSev"><option value="">심각도 전체</option><option value="상">상</option><option value="상,중">상·중</option></select>
+      <select id="fOrig"><option value="">출처 전체</option><option value="검토단">검토단</option><option value="기계">기계</option></select>
+      <button id="fLoad">불러오기</button>
+      <span class="muted">판정은 엑셀 「판정」 열에서 합니다 → 저장 → 05 정오표</span>
+    </div>
+    <div class="tbl"><table><thead><tr><th>심각도</th><th>위치</th><th>잘못</th><th>바름</th><th>유형</th><th>근거</th><th>재검증</th><th>제안</th><th>판정</th></tr></thead><tbody id="fBody"></tbody></table></div>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let JOB = "", offset = 0;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+async function api(path, opt = {}) {
+  const r = await fetch(path, opt);
+  if (!r.ok) { let t = await r.text(); try { t = JSON.parse(t).detail || t } catch (e) {} throw new Error(t); }
+  return r.json();
+}
+async function loadJobs() {
+  const js = await api("/api/jobs");
+  $("#job").innerHTML = js.map(j => `<option>${esc(j)}</option>`).join("");
+  JOB = js[0] || "";
+  $("#job").onchange = () => { JOB = $("#job").value; loadSources(); poll(); };
+}
+async function loadSources() {
+  const d = await api(`/api/sources?job=${JOB}`);
+  $("#sources").innerHTML = d.items.map(it => `
+    <div class="src"><span class="lab">${esc(it.label)}</span>
+      <input type="text" data-key="${it.key}" value="${esc(it.path)}">
+      <button data-pick="${it.key}">고르기</button>
+      <span class="cnt">${esc(it.count)}</span></div>`).join("");
+  document.querySelectorAll("[data-pick]").forEach(b => b.onclick = async () => {
+    try { const r = await api("/api/pick", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+      if (r.folder) document.querySelector(`input[data-key="${b.dataset.pick}"]`).value = r.folder;
+    } catch (e) { alert(e.message) }
+  });
+}
+$("#saveSrc").onclick = async () => {
+  const src = {}; document.querySelectorAll("#sources input").forEach(i => src[i.dataset.key] = i.value);
+  try { await api("/api/sources", {method: "PUT", headers: {"Content-Type": "application/json"}, body: JSON.stringify({job: JOB, sources: src})});
+    $("#srcMsg").textContent = "저장했습니다 — 00 대상을 다시 돌리면 반영됩니다"; loadSources();
+  } catch (e) { alert(e.message) }
+};
+document.querySelectorAll("[data-stage]").forEach(b => b.onclick = async () => {
+  const stage = b.dataset.stage;
+  if (stage === "all" && !confirm("전체 실행을 시작합니다. 검토 배치가 수백 개라 며칠 걸릴 수 있습니다. 시작할까요?")) return;
+  try {
+    await api("/api/run", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({job: JOB, stage, only: $("#only").value.trim(), force: $("#force").checked})});
+    offset = 0; $("#log").textContent = "";
+  } catch (e) { alert(e.message) }
+});
+$("#stop").onclick = async () => { if (confirm("지금 도는 작업을 멈출까요? (다시 누르면 남은 것만 이어 합니다)")) await api("/api/stop", {method: "POST"}); };
+$("#openDir").onclick = () => api(`/api/open?job=${JOB}&what=errata`, {method: "POST"}).catch(e => alert(e.message));
+async function poll() {
+  try {
+    const l = await api(`/api/log?offset=${offset}`);
+    if (l.text) {
+      const pre = $("#log"), atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+      pre.insertAdjacentHTML("beforeend", esc(l.text).replace(/^(.*⏸.*)$/gm, '<span class="wait">$1</span>'));
+      if (atEnd) pre.scrollTop = pre.scrollHeight;
+    }
+    offset = l.offset;
+    const p = await api(`/api/progress?job=${JOB}`), pr = p.progress || {}, run = p.run;
+    const waiting = /⏸/.test((l.text || "").split("\n").slice(-3).join("\n"));
+    $("#state").textContent = run.running ? (waiting ? "한도 대기" : `실행 중 · ${run.cmd[0]}`) : (run.code === null ? "대기" : `끝남 (코드 ${run.code})`);
+    const pct = pr.total ? Math.round(100 * pr.done / pr.total) : 0;
+    $("#barFill").style.width = pct + "%";
+    const el = pr.started ? ((pr.updated - pr.started) / 3600).toFixed(1) : 0;
+    $("#progTxt").textContent = pr.total ? `검토 배치 ${pr.done}/${pr.total} (${pct}%) · 현재 ${pr.current || "-"} · 실패 ${(pr.failed || []).length} · 호출 ${pr.calls || 0}회 · 경과 ${el}시간`
+      : "검토 전";
+    const c = (p.counts || {}).counts || {};
+    const names = {Q: "문항", V: "영상 장면", S: "요약 항목", D: "덱 장", L: "롱폼 장", B: "교재 절", T: "쇼츠 장면"};
+    $("#kpis").innerHTML = `<div class="kpi"><span class="muted">지적(합계)</span><b>${p.findings}</b></div>` +
+      Object.entries(c).map(([k, v]) => `<div class="kpi"><span class="muted">${names[k] || k}</span><b>${v}</b></div>`).join("");
+    $("#dlx").href = `/out/${JOB}/xlsx`; $("#dlh").href = `/out/${JOB}/html`; $("#dlhist").href = `/out/${JOB}/history`; $("#dlpanel").href = `/out/${JOB}/panel`;
+    if (!$("#only").value && !$("#only").dataset.hint) { $("#only").placeholder = `비우면 전체 · 시험: ${p.trial_only}`; $("#only").dataset.hint = 1; }
+  } catch (e) { $("#state").textContent = "서버 응답 없음"; }
+  $("#clock").textContent = new Date().toLocaleTimeString();
+}
+$("#fLoad").onclick = async () => {
+  const d = await api(`/api/findings?job=${JOB}&product=${$("#fProd").value}&severity=${encodeURIComponent($("#fSev").value)}&origin=${encodeURIComponent($("#fOrig").value)}`);
+  $("#fTotal").textContent = `— ${d.total}건 중 ${d.rows.length}건`;
+  $("#fBody").innerHTML = d.rows.map(r => `<tr><td class="sev-${r.severity}">${esc(r.severity)}</td><td>${esc(r.loc)}</td>
+    <td class="asis">${esc(r.as_is)}</td><td class="tobe">${esc(r.to_be)}</td><td>${esc(r.type)}</td>
+    <td>${esc(r.reason)}${r.needs_web ? " 🔎" : ""}</td><td>${esc((r.verify || {}).verdict || "")}</td><td>${esc(r.suggest)}</td><td>${esc(r.decision)}</td></tr>`).join("");
+};
+(async () => { await loadJobs(); await loadSources(); poll(); setInterval(poll, 3000); })();
+</script>
+</body>
+</html>
