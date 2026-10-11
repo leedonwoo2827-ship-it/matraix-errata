@@ -177,7 +177,10 @@ class Progress:
     def save(self, **kw) -> None:
         self.d.update(kw)
         self.d["updated"] = time.time()
-        write_json(self.path, self.d)
+        try:
+            write_json(self.path, self.d)
+        except OSError as e:          # 진행 표시용 파일이다 — 못 써도 검토는 계속한다
+            warn(f"진행 표시(progress.json)를 못 썼습니다 — 검토는 계속합니다 ({e})")
 
 
 def _ask(job: Job, prompt: str) -> str:

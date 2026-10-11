@@ -39,6 +39,8 @@ class Runner:
         self.code: Optional[int] = None
         self.chain: List[List[str]] = []     # 앞 단계가 성공하면 이어서 돌릴 것(「＋ 새 시험 시작」의 ingest → panel 등)
         self.lock = threading.Lock()
+        self.stopped = False                 # 사람이 「중지」를 눌렀나 — 눌렀으면 자동 재개하지 않는다
+        self.restarts = 0
 
     def running(self) -> bool:
         return bool(self.proc and self.proc.poll() is None)
@@ -53,6 +55,7 @@ class Runner:
                 LOG.replace(LOG.with_name(f"web-run_{time.strftime('%m%d-%H%M%S')}.log"))
             fh = LOG.open("w", encoding="utf-8")
             self.chain = list(chain or [])
+            self.stopped, self.restarts = False, 0
             self._launch(args, fh)
 
     def _launch(self, args: List[str], fh) -> None:
@@ -70,12 +73,22 @@ class Runner:
         if code == 0 and self.chain:              # 이어서 — 같은 로그에 붙인다
             self._launch(self.chain.pop(0), fh)
             return
+        # ★ 무인 운전 — all/trial 이 오류로 죽으면 1분 뒤 같은 명령을 다시 돌린다(끝난 배치는 건너뛴다).
+        #   사용 한도는 errata 안에서 기다리므로 여기 오는 것은 그 밖의 오류다(2026-10-08 progress.json 충돌로 멈춘 일).
+        if code != 0 and not self.stopped and self.cmd and self.cmd[0] in ("all", "trial") and self.restarts < AUTO_RESTARTS:
+            self.restarts += 1
+            fh.write(f"\n[자동 재개 {self.restarts}/{AUTO_RESTARTS} — 60초 뒤 같은 명령을 다시 돌립니다(끝난 배치는 건너뜀)]\n")
+            fh.flush()
+            args = list(self.cmd)
+            threading.Timer(60, lambda: (not self.stopped and not self.running()) and self._launch(args, fh)).start()
+            return
         self.chain = []
         self.code, self.ended = code, time.time()
         fh.close()
 
     def stop(self) -> None:
         self.chain = []
+        self.stopped = True
         if self.running():
             if os.name == "nt":
                 subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.proc.pid)], capture_output=True)
@@ -84,9 +97,10 @@ class Runner:
 
     def info(self) -> Dict[str, Any]:
         return {"running": self.running(), "cmd": self.cmd, "started": self.started,
-                "ended": self.ended, "code": self.code, "next": [c[0] for c in self.chain]}
+                "ended": self.ended, "code": self.code, "next": [c[0] for c in self.chain], "restarts": self.restarts}
 
 
+AUTO_RESTARTS = 5
 RUN = Runner()
 
 

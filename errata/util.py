@@ -33,12 +33,25 @@ def read_json(p: Path, default: Any = None) -> Any:
         return default
 
 
+def _replace(tmp: Path, p: Path, tries: int = 20) -> None:
+    """tmp → p. ★ 윈도우는 다른 프로세스가 p 를 읽는 그 순간엔 덮어쓰기를 거부한다(WinError 5).
+    웹 화면이 3초마다 progress.json 을 읽다가 검토가 통째로 죽은 일이 있다(2026-10-08) → 잠깐 쉬고 다시 한다."""
+    for i in range(tries):
+        try:
+            tmp.replace(p)
+            return
+        except PermissionError:
+            if i == tries - 1:
+                raise
+            time.sleep(0.1 + 0.05 * i)
+
+
 def write_json(p: Path, data: Any) -> None:
     p = Path(p)
     p.parent.mkdir(parents=True, exist_ok=True)
     tmp = p.with_suffix(p.suffix + ".tmp")
     tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-    tmp.replace(p)
+    _replace(tmp, p)
 
 
 def read_jsonl(p: Path) -> List[dict]:
@@ -62,7 +75,7 @@ def write_jsonl(p: Path, rows: Iterable[dict]) -> int:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
             n += 1
-    tmp.replace(p)
+    _replace(tmp, p)
     return n
 
 
