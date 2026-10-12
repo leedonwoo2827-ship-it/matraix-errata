@@ -38,19 +38,24 @@ def read_decisions(job: Job) -> Dict[str, dict]:
         try:
             import openpyxl
             wb = openpyxl.load_workbook(xp, read_only=True, data_only=True)
-            ws = wb["정오표"]
-            rows = ws.iter_rows(values_only=True)
-            head = [str(h or "") for h in next(rows)]
-            ix = {h: i for i, h in enumerate(head)}
-            for r in rows:
-                fid = r[ix["fid"]] if "fid" in ix else None
-                if not fid:
+            # ★ 판정은 어느 시트에 적어도 읽는다 — 「정오표」뿐 아니라 산물별 시트(Q_·L_ …)에 적는 사람이 많다.
+            #   같은 지적을 두 시트에 다르게 적었으면 「정오표」 시트가 이긴다(맨 마지막에 읽는다).
+            sheets = [ws for ws in wb.worksheets if ws.title != "정오표"] + ([wb["정오표"]] if "정오표" in wb.sheetnames else [])
+            for ws in sheets:
+                rows = ws.iter_rows(values_only=True)
+                head = [str(h or "") for h in next(rows, ())]
+                ix = {h: i for i, h in enumerate(head)}
+                if "fid" not in ix or "판정" not in ix:
                     continue
-                d = (r[ix["판정"]] or "").strip() if r[ix["판정"]] else ""
-                memo = (r[ix["확정 메모"]] or "") if "확정 메모" in ix else ""
-                to_be = r[ix["바름 (TO BE)"]] if "바름 (TO BE)" in ix else None
-                if d or memo:
-                    dec[str(fid)] = {"판정": d, "메모": str(memo), "바름": str(to_be or ""), "at": time.time()}
+                for r in rows:
+                    fid = r[ix["fid"]] if len(r) > ix["fid"] else None
+                    if not fid:
+                        continue
+                    d = str(r[ix["판정"]] or "").strip()
+                    memo = (r[ix["확정 메모"]] or "") if "확정 메모" in ix else ""
+                    to_be = r[ix["바름 (TO BE)"]] if "바름 (TO BE)" in ix else None
+                    if d or memo:
+                        dec[str(fid)] = {"판정": d, "메모": str(memo), "바름": str(to_be or ""), "at": time.time(), "시트": ws.title}
             wb.close()
         except Exception as e:  # noqa: BLE001
             warn(f"엑셀 판정을 읽지 못했습니다({e}) — 저장된 decisions.json 만 씁니다")
